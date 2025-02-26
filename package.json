@@ -1,0 +1,44 @@
+{
+  "name": "accentswap",
+  "version": "1.0.0",
+  "description": "AccentSwap is a real-time voice and video calling platform that connects users with random strangers to practice and improve any language through live conversations.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "client": "cd client && set NODE_OPTIONS=--openssl-legacy-provider && npm start",
+    "dev": "concurrently \"npm run start\" \"npm run client\"",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/singhpratik5/accentswap.git"
+  },
+  "keywords": [
+    "WebRTC",
+    "video call",
+    "voice call",
+    "language learning",
+    "real-time communication"
+  ],
+  "author": "Your Name",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/singhpratik5/accentswap/issues"
+  },
+  "homepage": "https://github.com/singhpratik5/accentswap#readme",
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-validator": "^7.2.1",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.10.2",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-scripts": "^3.0.1",
+    "ws": "^8.18.1"
+  },
+  "devDependencies": {
+    "concurrently": "^7.6.0"
+  }
+}
