@@ -1,0 +1,13 @@
+/* src/Layout.css */
+.layout {
+    display: flex;
+    gap: 20px;
+  }
+  
+  .left-pane,
+  .right-pane {
+    flex: 1;
+    border: 1px solid #ccc;
+    padding: 10px;
+  }
+  

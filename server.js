@@ -1,46 +1,60 @@
+const cors = require('cors');
 const express = require('express');
 const http = require('http');
-const WebSocket = require('ws');
-const connectDB = require('./config/db');
+const socketIo = require('socket.io');
+const connectDB = require('./config/db'); // Database connection
 const app = express();
 
-// Connect Database
+// Middleware
+app.use(cors({ origin: 'http://localhost:3000', credentials: true }));
+app.use(express.json());
+
+// Connect to Database
 connectDB();
 
-// Init Middleware
-app.use(express.json({ extended: false }));
-
 // Define Routes
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api/protected', require('./routes/protected'));
+app.use('/api/auth', require('./server/routes/authRoutes')); 
+app.use('/api/protected', require('./server/routes/protected'));
+app.use('/api/admin', require('./server/routes/adminRoutes'));
+// Add matching routes
+app.use('/api/matching', require('./server/routes/matchingRoutes'));
+// Add feedback routes
+app.use('/api/feedback', require('./server/routes/feedbackRoutes'));
 
 const PORT = process.env.PORT || 5000;
 
 // Create HTTP server
 const server = http.createServer(app);
 
-// Create WebSocket server on the same HTTP server
-const wss = new WebSocket.Server({ server });
+// Create Socket.IO server
+const io = socketIo(server, {
+  cors: {
+    origin: 'http://localhost:3000',
+    methods: ['GET', 'POST'],
+    credentials: true
+  }
+});
 
-wss.on('connection', (ws) => {
+// Initialize WebRTC signaling for main app
+io.on('connection', (socket) => {
   console.log('New client connected');
 
-  ws.on('message', (message) => {
+  socket.on('message', (message) => {
     console.log(`Received message: ${message}`);
-    wss.clients.forEach((client) => {
-      if (client !== ws && client.readyState === WebSocket.OPEN) {
-        client.send(message);
-      }
-    });
+    // Broadcast the message to all connected clients
+    socket.broadcast.emit('message', message);
   });
 
-  ws.on('close', () => {
+  socket.on('disconnect', () => {
     console.log('Client disconnected');
   });
 });
 
+// Initialize testing mode signaling
+require('./server/testingSignaling')(io);
+
 // Start the server
 server.listen(PORT, () => {
-  console.log(`Server started on port ${PORT}`);
-  console.log(`WebSocket server is running on ws://localhost:${PORT}`);
+  console.log(`Server started on http://localhost:${PORT}`);
+  console.log(`Socket.IO server running on ws://localhost:${PORT}`);
 });

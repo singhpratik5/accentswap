@@ -1,122 +1,94 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import io from 'socket.io-client';
+
+// Use dynamic hostname to work across different environments
+const socket = io(`http://${window.location.hostname}:5000`); // Dynamically use current hostname
 
 const VideoChat = () => {
-  const localVideoRef = useRef(null);
-  const remoteVideoRef = useRef(null);
-  const peerConnection = useRef(null);
-  const ws = useRef(null);
+    const localVideoRef = useRef(null);
+    const remoteVideoRef = useRef(null);
+    const [peerConnection, setPeerConnection] = useState(null);
 
-  // Add these functions inside the VideoChat component
+    useEffect(() => {
+        const configuration = {
+            iceServers: [
+                { urls: "stun:stun.l.google.com:19302" },
+                { urls: "stun:stun1.l.google.com:19302" }
+            ]
+        };
 
-  const toggleAudio = () => {
-    const audioTrack = localVideoRef.current.srcObject.getAudioTracks()[0];
-    audioTrack.enabled = !audioTrack.enabled;
-  };
+        const peer = new RTCPeerConnection(configuration);
+        setPeerConnection(peer);
 
-  const toggleVideo = () => {
-    const videoTrack = localVideoRef.current.srcObject.getVideoTracks()[0];
-    videoTrack.enabled = !videoTrack.enabled;
-  };
+        navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+            .then(stream => {
+                localVideoRef.current.srcObject = stream;
+                stream.getTracks().forEach(track => peer.addTrack(track, stream));
+            })
+            .catch(error => console.error("Error accessing media devices:", error));
 
-  const endCall = () => {
-    peerConnection.current.close();
-    ws.current.close();
-  };
-
-  useEffect(() => {
-    const constraints = { video: true, audio: true };
-
-    // Establish WebSocket connection
-    ws.current = new WebSocket('ws://localhost:5000');
-
-    ws.current.onopen = () => {
-      console.log('WebSocket connection established');
-    };
-
-    ws.current.onmessage = (message) => {
-      const data = JSON.parse(message.data);
-
-      if (data.sdp) {
-        peerConnection.current.setRemoteDescription(new RTCSessionDescription(data.sdp))
-          .then(() => {
-            if (data.sdp.type === 'offer') {
-              peerConnection.current.createAnswer()
-                .then(answer => peerConnection.current.setLocalDescription(answer))
-                .then(() => {
-                  sendMessage({ sdp: peerConnection.current.localDescription });
-                });
+        peer.onicecandidate = (event) => {
+            if (event.candidate) {
+                console.log("Sending ICE Candidate:", event.candidate);
+                socket.emit('candidate', event.candidate);
             }
-          });
-      } else if (data.candidate) {
-        peerConnection.current.addIceCandidate(new RTCIceCandidate(data.candidate));
-      }
-    };
-
-    navigator.mediaDevices.getUserMedia(constraints)
-      .then((stream) => {
-        localVideoRef.current.srcObject = stream;
-
-        // Create a new RTCPeerConnection with STUN servers
-        peerConnection.current = new RTCPeerConnection({
-          iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' }
-          ]
-        });
-
-        // Add local stream to the connection
-        stream.getTracks().forEach((track) => {
-          peerConnection.current.addTrack(track, stream);
-        });
-
-        // Handle remote stream
-        peerConnection.current.ontrack = (event) => {
-          remoteVideoRef.current.srcObject = event.streams[0];
         };
 
-        // Handle ICE candidates
-        peerConnection.current.onicecandidate = (event) => {
-          if (event.candidate) {
-            sendMessage({ candidate: event.candidate });
-          }
+        peer.ontrack = (event) => {
+            if (remoteVideoRef.current) {
+                remoteVideoRef.current.srcObject = event.streams[0];
+            }
         };
 
-        // Create an offer
-        peerConnection.current.createOffer()
-          .then(offer => peerConnection.current.setLocalDescription(offer))
-          .then(() => {
-            sendMessage({ sdp: peerConnection.current.localDescription });
-          });
-      })
-      .catch((error) => {
-        console.error('Error accessing media devices.', error);
-      });
+        socket.on('offer', async (offer) => {
+            console.log("Received Offer:", offer);
+            await peer.setRemoteDescription(new RTCSessionDescription(offer));
 
-    return () => {
-      ws.current.close();
+            const answer = await peer.createAnswer();
+            await peer.setLocalDescription(answer);
+
+            console.log("Sending Answer:", answer);
+            socket.emit('answer', answer);
+        });
+
+        socket.on('answer', async (answer) => {
+            console.log("Received Answer:", answer);
+            if (peer) {
+                await peer.setRemoteDescription(new RTCSessionDescription(answer));
+            }
+        });
+
+        socket.on('candidate', async (candidate) => {
+            console.log("Received ICE Candidate:", candidate);
+            if (peer) {
+                await peer.addIceCandidate(new RTCIceCandidate(candidate));
+            }
+        });
+
+    }, []);
+
+    const startCall = async () => {
+        if (!peerConnection) return;
+
+        try {
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+
+            console.log("Sending Offer:", offer);
+            socket.emit('offer', offer);
+        } catch (error) {
+            console.error("Error starting call:", error);
+        }
     };
-  }, []);
 
-  // Function to send messages over WebSocket
-  const sendMessage = (message) => {
-    if (ws.current.readyState === WebSocket.OPEN) {
-      ws.current.send(JSON.stringify(message));
-    } else {
-      console.error('WebSocket is not open');
-    }
-  };
-
-  return (
-    <div>
-      <video ref={localVideoRef} autoPlay playsInline muted />
-      <video ref={remoteVideoRef} autoPlay playsInline />
-      <div>
-        <button onClick={toggleAudio}>Mute/Unmute</button>
-        <button onClick={toggleVideo}>Start/Stop Video</button>
-        <button onClick={endCall}>End Call</button>
-      </div>
-    </div>
-  );
+    return (
+        <div className="video-chat">
+            <h2>Video Chat</h2>
+            <video ref={localVideoRef} autoPlay playsInline className="video-box" />
+            <video ref={remoteVideoRef} autoPlay playsInline className="video-box" />
+            <button onClick={startCall}>Start Call</button>
+        </div>
+    );
 };
 
 export default VideoChat;
